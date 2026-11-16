@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#243e1b">
+    <meta name="description" content="برنامج درع الغابة - الدليل التفاعلي الذكي لدعم مزارعي الزيتون في سوريا">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="درع الغابة">
+    <link rel="manifest" href="./manifest.json">
+    <title>درع الغابة - دعم مزارعي الزيتون في سوريا</title>
+
+    <!-- مكتبة Leaflet للخرائط -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --primary: #2d4c22;
+            --primary-light: #4a773c;
+            --accent: #d97706;
+            --accent-light: #fef3c7;
+            --bg: #f3f6f1;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --muted: #6b7280;
+            --border: #dce5d8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* شاشة الترحيب */
+        #splash-screen {
+            position: fixed; inset: 0;
+            background: linear-gradient(135deg, #1e3516 0%, #3d632e 100%);
+            color: white; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 9999; text-align: center; padding: 20px;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        #splash-screen.hidden { opacity: 0; visibility: hidden; }
+        .splash-shield {
+            width: 92px; height: 92px;
+            background: rgba(255, 255, 255, 0.12);
+            border: 2px solid #a3e635; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 44px; margin-bottom: 18px;
+            box-shadow: 0 0 30px rgba(163, 230, 53, 0.3);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+        #splash-screen h1 { font-size: 2.1rem; margin-bottom: 10px; }
+        #splash-screen p { font-size: 1.1rem; color: #d9f99d; max-width: 480px; line-height: 1.6; margin-bottom: 28px; }
+        .start-btn {
+            background-color: #d97706; color: white; border: none;
+            padding: 13px 34px; font-size: 1.1rem; font-weight: bold;
+            border-radius: 30px; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(217, 119, 6, 0.4);
+        }
+
+        /* الترويسة */
+        header {
+            background: linear-gradient(90deg, #243e1b 0%, #3a602c 100%);
+            color: white; padding: 12px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 10;
+        }
+        .brand { display: flex; align-items: center; gap: 10px; }
+        .brand-icon { font-size: 24px; background: rgba(255,255,255,0.15); padding: 6px 10px; border-radius: 10px; }
+        .brand-text h1 { font-size: 1.25rem; font-weight: bold; }
+        .brand-text span { font-size: 0.8rem; color: #d4e8cb; display: block; }
+
+        .header-actions { display: flex; align-items: center; gap: 8px; }
+        #install-btn {
+            display: none; background: #d97706; color: white;
+            border: none; padding: 7px 14px; border-radius: 20px;
+            font-size: 0.85rem; font-weight: bold; cursor: pointer;
+        }
+        #gps-btn {
+            background: #0284c7; color: white; border: none;
+            padding: 7px 14px; border-radius: 20px; font-size: 0.85rem;
+            font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 5px;
+        }
+
+        /* المحتوى */
+        #main-layout { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+        /* الخريطة */
+        #map-section {
+            flex: 1.35;
+            display: flex; flex-direction: column;
+            position: relative;
+        }
+        #map {
+            width: 100%; height: 100%; min-height: 300px;
+            z-index: 1;
+        }
+
+        .custom-div-icon { background: transparent; border: none; }
+
+        /* لوحة التفاصيل */
+        #details-panel {
+            flex: 1; background: var(--card-bg);
+            border-right: 2px solid var(--border);
+            padding: 20px; overflow-y: auto;
+            z-index: 2;
+        }
+        .empty-state {
+            height: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center; color: var(--muted); padding: 20px;
+        }
+        .empty-state .icon { font-size: 52px; margin-bottom: 14px; }
+        .empty-state h2 { color: var(--primary); margin-bottom: 8px; font-size: 1.25rem; }
+
+        .region-header { border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
+        .region-header h2 { color: var(--primary); font-size: 1.3rem; margin-bottom: 6px; }
+        .varieties-badge { display: inline-block; background: #ecfccb; color: #3f6212; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; font-weight: bold; }
+
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+        .metric-box { background: #f8faf7; border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; }
+        .metric-box .m-icon { font-size: 20px; margin-bottom: 3px; }
+        .metric-box .m-title { font-size: 0.78rem; color: var(--muted); }
+        .metric-box .m-val { font-size: 0.92rem; font-weight: bold; color: var(--primary); margin-top: 2px; }
+
+        .info-card { background: #f9fbf8; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+        .info-card h3 { color: var(--primary); font-size: 1.02rem; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+        .info-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.9rem; gap: 10px; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-weight: bold; color: #4b5563; white-space: nowrap; }
+        .info-value { color: #111827; text-align: left; }
+
+        .tips-card { background: var(--accent-light); border: 1px solid #fcd34d; border-radius: 10px; padding: 14px; }
+        .tips-card h3 { color: #b45309; font-size: 1.02rem; margin-bottom: 8px; }
+        .tips-card ul { padding-right: 18px; }
+        .tips-card li { margin-bottom: 7px; font-size: 0.9rem; line-height: 1.5; color: #78350f; }
+
+        /* مؤشر التحميل */
+        .ai-loading { display: none; text-align: center; padding: 20px; color: var(--primary); position: absolute; top: 20px; left: 20px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        .ai-loading.active { display: block; }
+        .spinner {
+            border: 3px solid #f3f3f3; border-top: 3px solid var(--primary);
+            border-radius: 50%; width: 30px; height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* التعديل للموبايل */
+        @media (max-width: 850px) {
+            body { height: auto; overflow: auto; }
+            #main-layout { flex-direction: column; overflow: visible; }
+            #map-section { height: 45vh; min-height: 300px; flex: none; }
+            #details-panel { max-height: 55vh; overflow-y: auto; border-right: none; border-top: 2px solid var(--border); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="splash-screen">
+        <div class="splash-shield">🛡️🌿</div>
+        <h1>برنامج درع الغابة</h1>
+        <p>المنصة الذكية لدعم مزارعي الزيتون في سوريا<br>استخدم الخريطة أو زر تحديد الموقع للحصول على التوصيات</p>
+        <button class="start-btn" onclick="enterApp()">دخول إلى الخريطة الذكية</button>
+    </div>
+
+    <header>
+        <div class="brand">
+            <div class="brand-icon">🛡️🌿</div>
+            <div class="brand-text">
+                <h1>درع الغابة</h1>
+                <span>دليل ذكي لمزارعي الزيتون</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button id="gps-btn">📍 موقعي</button>
+            <button id="install-btn">📲 تثبيت</button>
+        </div>
+    </header>
+
+    <div id="main-layout">
+        <div id="map-section">
+            <div id="ai-loading" class="ai-loading">
+                <div class="spinner"></div>
+                <p style="font-size:0.8rem; font-weight:bold;">جاري التحليل...</p>
+            </div>
+            <div id="map"></div>
+        </div>
+
+        <div id="details-panel">
+            <div id="empty-state" class="empty-state">
+                <div class="icon">🌳</div>
+                <h2>أهلاً بك في درع الغابة</h2>
+                <p>انقر على أي علامة في الخريطة، أو اضغط على زر <b>"📍 موقعي"</b> ليقوم النظام تلقائياً بتحليل التربة والأسمدة لأقرب منطقة زراعية إليك.</p>
+            </div>
+
+            <div id="region-content" style="display: none;">
+                <div class="region-header">
+                    <h2 id="r-name">اسم المنطقة</h2>
+                    <span class="varieties-badge" id="r-varieties">الأصناف</span>
+                </div>
+
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <div class="m-icon">🌡️</div>
+                        <div class="m-title">متوسط الحرارة</div>
+                        <div class="m-val" id="r-temp">--</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="m-icon">💧</div>
+                        <div class="m-title">الرطوبة</div>
+                        <div class="m-val" id="r-humidity">--</div>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <h3>🌱 تحليل التربة والتسميد</h3>
+                    <div class="info-row"><span class="info-label">نوع التربة:</span><span class="info-value" id="r-soil">--</span></div>
+                    <div class="info-row"><span class="info-label">التسميد:</span><span class="info-value" id="r-fertilizer">--</span></div>
+                    <div class="info-row"><span class="info-label">القطاف:</span><span class="info-value" id="r-harvest">--</span></div>
+                    <div class="info-row"><span class="info-label">التقليم:</span><span class="info-value" id="r-pruning">--</span></div>
+                </div>
+
+                <div class="tips-card">
+                    <h3>✨ إرشادات ذكية</h3>
+                    <ul id="r-tips"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. المفتاح الخاص بك من MapTiler
+        // ==========================================
+        const MAPTILER_API_KEY = 'rjZjwuzczkv2jiKOLyEt'; 
+
+        function enterApp() {
+            document.getElementById('splash-screen').classList.add('hidden');
+        }
+        setTimeout(enterApp, 4000);
+
+        // ==========================================
+        // 2. قاعدة البيانات الزراعية
+        // ==========================================
+        const regionsData = [
+            {
+                name: "منطقة الساحل السوري (طرطوس واللاذقية)",
+                varieties: "الخضيري، الدان، دعيبلي",
+                temp: "15° - 30° مئوية",
+                humidity: "مرتفعة (65% - 80%)",
+                soil: "تربة كلسية طينية حمراء (Terra Rossa) غنية بالمواد العضوية، عمق 50-80 سم",
+                fertilizer: "للغرس 1-2 سنة: يوريا 4.5 كغ/دونم + سوبر فوسفات 3 كغ + سلفات بوتاس 3 كغ + سماد عضوي 2 م³. للأشجار المثمرة: يوريا 33 كغ/دونم.",
+                harvest: "تشرين الأول (أكتوبر) للزيت، أيلول للمائدة",
+                pruning: "نهاية كانون الثاني حتى منتصف آذار",
+                tips: [
+                    "الرطوبة العالية تتطلب تقليماً يفتح قلب الشجرة للتهوية لمنع مرض عين الطاووس.",
+                    "الرش الوقائي بمحلول بوردو (النحاس) بعد القطاف مباشرة.",
+                    "تجنب الحراثة العميقة في المنحدرات لمنع انجراف التربة."
+                ]
+            },
+            {
+                name: "ريف حماة الغربي (مصياف والمناطق الجبلية)",
+                varieties: "الصوراني، الخضيري، القيسي",
+                temp: "10° - 32° مئوية",
+                humidity: "متوسطة (50% - 65%)",
+                soil: "تربة كلسية متوسطة العمق وصخرية في المرتفعات، جيدة الصرف",
+                fertilizer: "للغرس 3-4 سنوات: يوريا 6.5 كغ/دونم + سوبر فوسفات 4.5 كغ + سلفات بوتاس 4 كغ. للأشجار المثمرة: نترات أمونيوم 30% بمعدل 33 كغ/دونم.",
+                harvest: "منتصف تشرين الأول حتى نهاية تشرين الثاني",
+                pruning: "شباط وآذار (بعد انتهاء موجات الصقيع)",
+                tips: [
+                    "تأخير التقليم لما بعد الصقيع الربيعي لحماية النموات الغضة.",
+                    "إضافة السماد العضوي المتخمر في الخريف لرفع قدرة الاحتفاظ بالرطوبة.",
+                    "مكافحة ذبابة الزيتون بالمصائد الفرمونية من تموز."
+                ]
+            },
+            {
+                name: "إدلب وريف حلب (عفرين وجبل الزاوية)",
+                varieties: "الصوراني، الزيتي (الكرماني)",
+                temp: "8° - 36° مئوية",
+                humidity: "منخفضة إلى متوسطة (40% - 55%)",
+                soil: "تربة حمراء كلسية عميقة وجيدة الصرف",
+                fertilizer: "للغرس 5-6 سنوات: يوريا 8.5 كغ + سوبر فوسفات 6.5 كغ + سلفات بوتاس 5 كغ + سماد عضوي 2 م³. للأشجار المثمرة: يوريا 11 كغ/دونم.",
+                harvest: "تشرين الثاني (نوفمبر) لأعلى نسبة زيت",
+                pruning: "كانون الثاني وشباط",
+                tips: [
+                    "تنعيم سطح التربة في أواخر الربيع لكسر الشقوق ومنع التبخر.",
+                    "رش البورون والزنك قبل الإزهار لزيادة عقد الثمار.",
+                    "القطاف اليدوي وتجنب ضرب الأغصان بالعصي لضمان موسم قادم."
+                ]
+            },
+            {
+                name: "ريف حمص (تلكلخ والمخرم والمنطقة الشرقية)",
+                varieties: "الصوراني، القيسي، العبادي",
+                temp: "9° - 34° مئوية",
+                humidity: "متوسطة (45% - 60%)",
+                soil: "تربة كلسية طينية في الغرب وطميية خفيفة في الشرق",
+                fertilizer: "للغرس 7-8 سنوات: يوريا 10.5 كغ + سوبر فوسفات 6.5 كغ + سلفات بوتاس 6 كغ. للأشجار المثمرة: نترات أمونيوم 33 كغ/دونم.",
+                harvest: "تشرين الأول وتشرين الثاني",
+                pruning: "شباط وبداية آذار",
+                tips: [
+                    "في المناطق الشرقية المعرضة للرياح، إنشاء مصدات رياح طبيعية.",
+                    "التسميد البوتاسي في الصيف لتحسين جودة الزيت ومقاومة الجفاف.",
+                    "إزالة السرطانات حول قاعدة الجذع بانتظام."
+                ]
+            },
+            {
+                name: "ريف دمشق والغوطة والقلمون",
+                varieties: "الدان، الجلط، القيسي، التفاحي",
+                temp: "7° - 35° مئوية",
+                humidity: "منخفضة (35% - 50%)",
+                soil: "تربة طميية غرينية خصبة في الغوطة وكلسية في القلمون",
+                fertilizer: "للغرس 9-10 سنوات: يوريا 15 كغ + سوبر فوسفات 8.5 كغ + سلفات بوتاس 7 كغ + سماد عضوي 2 م³. للأشجار المثمرة: يوريا 33.5 كغ/دونم.",
+                harvest: "أيلول للمائدة، وتشرين الأول للزيت",
+                pruning: "شباط وآذار",
+                tips: [
+                    "تنظيم الري التكميلي في مرحلة تصلب النواة (تموز وآب) لمنع تساقط الثمار.",
+                    "مكافحة حفار ساق الزيتون بتنظيف الأغصان اليابسة وطلاء الجذوع.",
+                    "التقليم السنوي المعتدل للحد من ظاهرة المعاومة."
+                ]
+            },
+            {
+                name: "المنطقة الجنوبية (درعا والسويداء)",
+                varieties: "النبالي، الصوراني، القيسي",
+                temp: "9° - 35° مئوية",
+                humidity: "منخفضة (35% - 50%)",
+                soil: "تربة بركانية بازلتية غنية بالبوتاسيوم والحديد",
+                fertilizer: "للغرس 11-12 سنة: يوريا 19.5 كغ + سوبر فوسفات 8.5 كغ + سلفات بوتاس 8 كغ. للأشجار المثمرة: نترات أمونيوم 33 كغ/دونم.",
+                harvest: "تشرين الأول وتشرين الثاني",
+                pruning: "شباط (تقليم خفيف لحماية الساق)",
+                tips: [
+                    "التربة البازلتية غنية بالبوتاسيوم لكنها تحتاج تسميداً آزوتياً متوازناً.",
+                    "عدم كشف هيكل الشجرة بشكل مبالغ فيه لحماية الجذوع من لفحة الشمس.",
+                    "الري التكميلي في الصيف يضاعف حجم الثمار ونسبة الزيت."
+                ]
+            }
+        ];
+
+        // إحداثيات المناطق [خط العرض, خط الطول]
+        const regionCoords = [
+            [35.5, 35.9], // 0: الساحل
+            [35.1, 36.8], // 1: حماة
+            [36.2, 36.6], // 2: إدلب
+            [34.7, 36.7], // 3: حمص
+            [33.5, 36.3], // 4: دمشق
+            [32.6, 36.2]  // 5: درعا
+        ];
+
+        // ==========================================
+        // 3. تهيئة الخريطة ومعالجة انقطاع الإنترنت
+        // ==========================================
+        let map;
+        let userMarker = null;
+
+        function initMap() {
+            // التحقق من الاتصال بالإنترنت
+            if (!navigator.onLine) {
+                document.getElementById('map').innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; background:#eef4ea; color:#2d4c22; text-align:center; padding:20px;">
+                        <div style="font-size:48px; margin-bottom:10px;">📡</div>
+                        <h3>لا يوجد اتصال بالإنترنت</h3>
+                        <p style="font-size:0.9rem; margin-top:8px;">لا يمكن تحميل الخريطة حالياً. يرجى استخدام الأزرار في الأسفل لعرض البيانات الزراعية.</p>
+                    </div>
+                `;
+                return; // إيقاف تهيئة الخريطة
+            }
+
+            // إعداد الخريطة على سوريا
+            map = L.map('map').setView([34.8, 38.0], 7);
+
+            // استدعاء خريطة MapTiler (شوارع)
+            L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`, {
+                attribution: '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                tileSize: 512,
+                zoomOffset: -1,
+                maxZoom: 19
+            }).addTo(map);
+
+            // إضافة علامات المناطق
+            regionsData.forEach((reg, idx) => {
+                const oliveIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color: #2d4c22; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4);">🌿</div>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17]
+                });
+
+                const marker = L.marker(regionCoords[idx], { icon: oliveIcon })
+                    .addTo(map)
+                    .bindPopup(`<div style="text-align:center; font-family: Tahoma, sans-serif;"><b>${reg.name.split('(')[0]}</b><br><span style="color:#6b7280; font-size:12px;">انقر لعرض التفاصيل</span></div>`);
+
+                marker.on('click', () => selectRegion(idx));
+            });
+        }
+
+        // ==========================================
+        // 4. دالة حساب المسافة (Haversine)
+        // ==========================================
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // نصف قطر الأرض بالكيلومتر
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // ==========================================
+        // 5. دالة عرض بيانات المنطقة
+        // ==========================================
+        function selectRegion(index) {
+            const data = regionsData[index];
+
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('region-content').style.display = 'none';
+            document.getElementById('ai-loading').classList.add('active');
+
+            setTimeout(() => {
+                document.getElementById('ai-loading').classList.remove('active');
+                document.getElementById('region-content').style.display = 'block';
+
+                document.getElementById('r-name').innerText = data.name;
+                document.getElementById('r-varieties').innerText = "الأصناف: " + data.varieties;
+                document.getElementById('r-temp').innerText = data.temp;
+                document.getElementById('r-humidity').innerText = data.humidity;
+                document.getElementById('r-soil').innerText = data.soil;
+                document.getElementById('r-fertilizer').innerText = data.fertilizer;
+                document.getElementById('r-harvest').innerText = data.harvest;
+                document.getElementById('r-pruning').innerText = data.pruning;
+
+                const tipsUl = document.getElementById('r-tips');
+                tipsUl.innerHTML = '';
+                data.tips.forEach(tip => {
+                    const li = document.createElement('li');
+                    li.innerText = tip;
+                    tipsUl.appendChild(li);
+                });
+
+                if (window.innerWidth <= 850) {
+                    document.getElementById('details-panel').scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 500);
+        }
+
+        // ==========================================
+        // 6. نظام تحديد الموقع GPS
+        // ==========================================
+        document.getElementById('gps-btn').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert("متصفحك لا يدعم تحديد الموقع.");
+                return;
+            }
+
+            document.getElementById('gps-btn').innerText = "⏳ جاري...";
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    document.getElementById('gps-btn').innerText = "📍 موقعي";
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    if (userMarker) map.removeLayer(userMarker);
+                    userMarker = L.marker([userLat, userLng]).addTo(map)
+                        .bindPopup("موقعك الحالي").openPopup();
+
+                    map.flyTo([userLat, userLng], 11, { duration: 1.5 });
+
+                    // إيجاد أقرب منطقة باستخدام Haversine
+                    let nearestIdx = 0;
+                    let minDist = Infinity;
+                    regionCoords.forEach((coord, idx) => {
+                        const dist = getDistance(userLat, userLng, coord[0], coord[1]);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            nearestIdx = idx;
+                        }
+                    });
+
+                    setTimeout(() => selectRegion(nearestIdx), 1500);
+                },
+                (error) => {
+                    document.getElementById('gps-btn').innerText = "📍 موقعي";
+                    alert("تعذر تحديد الموقع. تأكد من تفعيل GPS والسماح للمتصفح بالوصول للموقع.");
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
+
+        document.addEventListener('DOMContentLoaded', initMap);
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(() => {});
+            });
+        }
+
+        let deferredPrompt;
+        const installBtn = document.getElementById('install-btn');
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'inline-block';
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            await deferredPrompt.userChoice;
+            deferredPrompt = null;
+            installBtn.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
